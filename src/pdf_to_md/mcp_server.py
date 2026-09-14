@@ -32,6 +32,7 @@ PROTOCOL_VERSION = "2025-06-18"
 # Markdown longer than this is truncated in the tool result (with a note) so a
 # single huge document cannot blow up an agent's context window.
 DEFAULT_MAX_CHARS = 200_000
+MAX_REQUEST_CHARS = 1_000_000
 
 TOOLS = [
     {
@@ -134,14 +135,14 @@ def _require_pdf(args: Dict[str, Any]) -> str:
 
 
 def _ocr_options(args: Dict[str, Any]) -> OcrOptions:
-    lang = args.get("ocr_lang")
-    return OcrOptions(lang=lang) if isinstance(lang, str) and lang \
-        else OcrOptions()
+    return OcrOptions(lang=args.get("ocr_lang", "eng"))
 
 
 def _tool_convert_pdf(args: Dict[str, Any]) -> str:
     path = _require_pdf(args)
     limit = args.get("max_chars", DEFAULT_MAX_CHARS)
+    if type(limit) is not int or limit <= 0:
+        raise ValueError("'max_chars' must be a positive integer")
     md = convert_pdf_to_markdown(path, ocr_options=_ocr_options(args))
     if isinstance(limit, int) and limit > 0 and len(md) > limit:
         md = (md[:limit]
@@ -152,6 +153,12 @@ def _tool_convert_pdf(args: Dict[str, Any]) -> str:
 
 def _tool_convert_file(args: Dict[str, Any]) -> str:
     path = _require_pdf(args)
+    for key in ("out_path", "outdir"):
+        if key in args and (not isinstance(args[key], str) or not args[key]):
+            raise ValueError(f"'{key}' must be a non-empty string")
+    if "extract_images" in args and type(args["extract_images"]) is not bool:
+        raise ValueError("'extract_images' must be a boolean")
+    options = _ocr_options(args)
     out_path = args.get("out_path")
     if not out_path:
         base = os.path.splitext(os.path.basename(path))[0] + ".md"
@@ -161,7 +168,7 @@ def _tool_convert_file(args: Dict[str, Any]) -> str:
     os.makedirs(parent, exist_ok=True)
     convert_file(path, out_path,
                  extract_images=bool(args.get('extract_images')),
-                 ocr_options=_ocr_options(args))
+                 ocr_options=options)
     return json.dumps({"output": out_path,
                        "bytes": os.path.getsize(out_path)}, indent=2)
 
@@ -178,6 +185,7 @@ def _tool_pdf_info(args: Dict[str, Any]) -> str:
         for i, page in enumerate(pdf.pages):
             if page_needs_ocr(page):
                 scanned.append(i + 1)
+            page.close()
     return json.dumps({
         "path": path,
         "pages": npages,
@@ -199,9 +207,12 @@ HANDLERS = {
 
 def handle_request(msg: Dict[str, Any]) -> Any:
     """Return a JSON-RPC response dict, or None for notifications."""
+    if not isinstance(msg, dict):
+        return {"jsonrpc": "2.0", "id": None,
+                "error": {"code": -32600, "message": "invalid request"}}
     method = msg.get("method")
     mid = msg.get("id")
-    params = msg.get("params") or {}
+    params = msg.get("params", {})
 
     def ok(result):
         return {"jsonrpc": "2.0", "id": mid, "result": result}
@@ -210,8 +221,14 @@ def handle_request(msg: Dict[str, Any]) -> Any:
         return {"jsonrpc": "2.0", "id": mid,
                 "error": {"code": code, "message": message}}
 
-    if mid is None:  # notification -- nothing to answer
+    if (msg.get("jsonrpc") != "2.0" or not isinstance(method, str)
+            or (mid is not None and type(mid) not in (str, int))):
+        mid = None
+        return err(-32600, "invalid request")
+    if "id" not in msg:  # notification -- nothing to answer
         return None
+    if not isinstance(params, dict):
+        return err(-32602, "params must be an object")
 
     if method == "initialize":
         return ok({
@@ -226,11 +243,16 @@ def handle_request(msg: Dict[str, Any]) -> Any:
         return ok({"tools": TOOLS})
     if method == "tools/call":
         name = params.get("name")
+        if not isinstance(name, str):
+            return err(-32602, "tool name must be a string")
         handler = HANDLERS.get(name)
         if handler is None:
             return err(-32602, f"unknown tool: {name}")
         try:
-            text = handler(params.get("arguments") or {})
+            arguments = params.get("arguments", {})
+            if not isinstance(arguments, dict):
+                raise ValueError("arguments must be an object")
+            text = handler(arguments)
         except Exception as exc:
             return ok({"content": [{"type": "text",
                                     "text": f"{type(exc).__name__}: {exc}"}],
@@ -243,13 +265,23 @@ def handle_request(msg: Dict[str, Any]) -> Any:
 def serve(stdin=None, stdout=None) -> int:
     stdin = stdin or sys.stdin
     stdout = stdout or sys.stdout
-    for line in stdin:
+    while True:
+        line = stdin.readline(MAX_REQUEST_CHARS + 1)
+        if not line:
+            break
+        if len(line) > MAX_REQUEST_CHARS:
+            while line and not line.endswith("\n"):
+                line = stdin.readline(MAX_REQUEST_CHARS + 1)
+            stdout.write(json.dumps({"jsonrpc": "2.0", "id": None,
+                "error": {"code": -32600, "message": "request too large"}}) + "\n")
+            stdout.flush()
+            continue
         line = line.strip()
         if not line:
             continue
         try:
             msg = json.loads(line)
-        except json.JSONDecodeError:
+        except (ValueError, RecursionError):
             resp = {"jsonrpc": "2.0", "id": None,
                     "error": {"code": -32700, "message": "parse error"}}
         else:

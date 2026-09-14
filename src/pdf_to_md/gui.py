@@ -15,6 +15,7 @@ from tkinter import filedialog, ttk
 from . import __version__
 from .engine import convert_file
 from .ocr import find_tesseract
+from .fileio import reserve_output
 
 APP_TITLE = f"PDF to MD Transformer v{__version__}"
 
@@ -124,11 +125,13 @@ class App:
         threading.Thread(target=self._worker, args=(files, outdir), daemon=True).start()
 
     def _worker(self, files, outdir):
+        claimed = set()
         for i, pdf in enumerate(files):
             base = os.path.splitext(os.path.basename(pdf))[0] + ".md"
             dest_dir = outdir or os.path.dirname(os.path.abspath(pdf))
             out = os.path.join(dest_dir, base)
             try:
+                reserve_output(out, claimed, files)
                 os.makedirs(dest_dir, exist_ok=True)
                 convert_file(pdf, out)
                 self.msg_queue.put(("log", f"OK   {os.path.basename(pdf)}  ->  {out}"))

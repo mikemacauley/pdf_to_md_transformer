@@ -53,6 +53,12 @@ disk) and `pdf_info` (page count, which pages need OCR, OCR availability).
 machine-readable per-file report (stdout carries only the payload; logs go to
 stderr), and the exit code is non-zero if any file failed.
 
+Output files are replaced atomically after a complete write. Conversion refuses
+to overwrite a source PDF, including aliases, and batch conversion reports an
+error when multiple inputs target the same output. Existing destination symlinks
+are replaced rather than followed. Figure files are published individually;
+the Markdown and its entire assets directory are not one atomic transaction.
+
 A bundled Claude skill in `.claude/skills/pdf-to-markdown/` makes the agent
 reach for the tool automatically. Full interface reference: [AGENTS.md](AGENTS.md).
 
@@ -71,7 +77,7 @@ For each page with a text layer, the engine:
 
 Pages with **no text layer** (scanned papers) are rendered at 300 dpi, deskewed by projection-profile analysis, and read with Tesseract; ruled lines are recovered from pixel runs, and the exact same table-reconstruction and reading-order pipeline runs on the OCR word boxes.
 
-Because OCR can be wrong in ways geometry cannot detect, every numeric token is checked twice: against Tesseract's own confidence, and against a second read of the same pixels restricted to digits. Tokens that fail either check are named in a per-page comment, so verifying a scan means checking a handful of marked numbers instead of the whole page:
+Because OCR can be wrong in ways geometry cannot detect, numeric tokens are checked against Tesseract's confidence, with up to 80 second reads per page restricted to digits. Low-confidence numbers are retained and flagged. Disagreements in digits, signs, separators or percent markers are flagged too. A per-page comment lists up to 12 doubtful tokens and counts any additional ones:
 
 ```
 <!-- page 3: no text layer; converted with OCR (tesseract 5.3.4, psm 3, 300 dpi, lang eng) -->
@@ -79,6 +85,14 @@ Because OCR can be wrong in ways geometry cannot detect, every numeric token is 
 ```
 
 `--no-math-latex` disables reconstruction entirely if you would rather always see the raw glyphs. `--ocr-lang`, `--ocr-dpi` (400 helps small type), `--ocr-psm` and `--no-verify-numbers` tune the OCR pass.
+
+OCR accepts language identifiers such as `eng`, `fra+eng` and `script/Latin`,
+72–1200 dpi, and segmentation modes 1 or 3–13. Raster rendering is limited to
+40 million pixels per page; reduce the dpi for large scanned pages. The main
+OCR subprocess has a 120-second timeout and each numeric reread has a 10-second
+timeout. MCP request lines are limited to 1,000,000 characters, and `max_chars`
+must be a positive integer. These bounds do not sandbox the underlying PDF
+parser or impose a total conversion memory/time limit.
 
 ### Limitations
 

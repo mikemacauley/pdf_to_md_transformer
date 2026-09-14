@@ -9,6 +9,7 @@ is deterministic.
 from __future__ import annotations
 
 import re
+import math
 import statistics
 from dataclasses import dataclass
 from typing import List, Optional
@@ -16,6 +17,17 @@ from typing import List, Optional
 from .equations import math_evidence
 
 _CTRL_RE = re.compile(r"[\x01-\x08\x0b\x0c\x0e-\x1f\x7f]")
+
+
+def scan_positions(start, stop, step):
+    """Bound coordinate scans even for corrupt or extreme PDF geometry."""
+    if (not math.isfinite(start) or not math.isfinite(stop)
+            or stop - start > 150_000 or start + step == start):
+        raise ValueError("invalid or excessive PDF coordinate range")
+    x = start
+    while x <= stop:
+        yield x
+        x += step
 
 
 def clean_text(s: str) -> str:
@@ -171,11 +183,9 @@ def find_gutter(narrow: list, content_x0: float, width: float) -> Optional[float
     lo = content_x0 + 0.30 * width
     hi = content_x0 + 0.70 * width
     candidates = []
-    x = lo
-    while x <= hi:
+    for x in scan_positions(lo, hi, 3.0):
         if all(not (it.x0 - 2 < x < it.x1 + 2) for it in narrow):
             candidates.append(x)
-        x += 3.0
     if not candidates:
         return None
     gutter = statistics.median(candidates)

@@ -145,7 +145,8 @@ def render_equation(texts: List[str], tag: Optional[str]) -> str:
     note = (f"<!-- {label}: glyphs as laid out in the PDF; "
             f"not a faithful transcription -->")
     body = "\n".join(t for t in texts if t.strip())
-    return note + "\n```equation\n" + body + "\n```"
+    fence = "`" * max(3, 1 + max((len(m.group()) for m in re.finditer(r"`+", body)), default=0))
+    return note + "\n" + fence + "equation\n" + body + "\n" + fence
 
 
 def render_latex(latex: str, tag: Optional[str]) -> str:

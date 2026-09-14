@@ -24,6 +24,7 @@ means checking a handful of marked numbers rather than the whole page.
 from __future__ import annotations
 
 import os
+import math
 import re
 import shutil
 import subprocess
@@ -45,6 +46,16 @@ LINE_WINDOW_PX = 31         # smoothing window along the line direction
 H_LINE_MIN_FRAC = 0.10      # min h-line length as fraction of page width
 V_LINE_MIN_PX = 110         # min v-line length in pixels (@300dpi ~ 26pt)
 MAX_LINE_THICKNESS_PX = 14  # thicker dark bands are images, not rules
+MAX_RENDER_PIXELS = 40_000_000
+
+
+def check_render_size(width, height, dpi):
+    """Reject excessive raster allocations before invoking the PDF renderer."""
+    if (not math.isfinite(width) or not math.isfinite(height)
+            or width <= 0 or height <= 0
+            or math.ceil(width * dpi / 72) * math.ceil(height * dpi / 72)
+            > MAX_RENDER_PIXELS):
+        raise ValueError("rendered image exceeds the 40 million pixel limit or has invalid dimensions")
 
 _tesseract_cmd: Optional[str] = None
 _checked = False
@@ -58,6 +69,19 @@ class OcrOptions:
     psm: int = 3
     dpi: int = DPI
     verify_numbers: bool = True
+
+    def __post_init__(self):
+        # Language names are identifiers, never extra Tesseract arguments.
+        if not isinstance(self.lang, str) or not re.fullmatch(
+                r"[A-Za-z0-9_]+(?:/[A-Za-z0-9_]+)*(?:\+[A-Za-z0-9_]+(?:/[A-Za-z0-9_]+)*)*",
+                self.lang):
+            raise ValueError("OCR language must be a language identifier (e.g. eng or fra+eng)")
+        if type(self.psm) is not int or self.psm not in (1, *range(3, 14)):
+            raise ValueError("OCR psm must be 1 or an integer from 3 to 13")
+        if type(self.dpi) is not int or not 72 <= self.dpi <= 1200:
+            raise ValueError("OCR dpi must be an integer from 72 to 1200")
+        if type(self.verify_numbers) is not bool:
+            raise ValueError("verify_numbers must be a boolean")
 
 
 def find_tesseract() -> Optional[str]:
@@ -125,15 +149,16 @@ def tesseract_version() -> Optional[str]:
 
 def page_needs_ocr(page) -> bool:
     """True when the page has essentially no extractable text layer."""
-    return len(page.chars) < 5
+    usable = [ch for ch in page.chars if (ch.get("text") or "").strip()]
+    return not usable or (len(usable) < 5 and bool(page.images))
 
 
 # --------------------------------------------------------------------------
 # image processing (deterministic, numpy only)
 # --------------------------------------------------------------------------
 
-def _deskew(img: Image.Image) -> Image.Image:
-    """Small-angle deskew by maximizing row-projection variance."""
+def _deskew_with_angle(img: Image.Image):
+    """Return deskewed pixels and the applied angle for inverse source mapping."""
     small = img.resize((max(1, img.width // 4), max(1, img.height // 4)))
     best_angle, best_score = 0.0, -1.0
     for q in range(-12, 13):                       # -3.0 .. +3.0 in 0.25 steps
@@ -144,8 +169,12 @@ def _deskew(img: Image.Image) -> Image.Image:
         if score > best_score + 1e-6:
             best_angle, best_score = angle, score
     if abs(best_angle) >= 0.3:
-        return img.rotate(best_angle, fillcolor=255, resample=Image.BICUBIC)
-    return img
+        return img.rotate(best_angle, fillcolor=255, resample=Image.BICUBIC), best_angle
+    return img, 0.0
+
+
+def _deskew(img: Image.Image) -> Image.Image:
+    return _deskew_with_angle(img)[0]
 
 
 def _windowed_mean(mat: np.ndarray, win: int, axis: int) -> np.ndarray:
@@ -235,7 +264,7 @@ def _detect_rules_px(binary: np.ndarray) -> Tuple[List[dict], List[dict]]:
 # A token worth double-checking: contains a digit and is otherwise made of
 # characters that appear in numbers (so "1,024.50%" qualifies, "Fig.3b" and
 # ordinary words do not).
-NUMERIC_RE = re.compile(r"^[(\[]?[+-]?[$\u00a3\u20ac]?\d[\d.,:/\u00d7x^\u2013\u2014-]*"
+NUMERIC_RE = re.compile(r"^[(\[]?[+\u2212-]?[$\u00a3\u20ac]?\d[\d.,:/\u00d7x^\u2013\u2014-]*"
                         r"\s?[%\u00b0]?[)\]]?[.,;:]?$")
 
 # Characters tesseract is allowed to return when re-reading a number.
@@ -250,7 +279,12 @@ def is_numeric_token(text: str) -> bool:
 
 def normalise_number(text: str) -> str:
     """Strip punctuation that the two reads may legitimately disagree on."""
-    return re.sub(r"[^0-9]", "", text)
+    text = text.strip().rstrip(";:").replace("−", "-")
+    if text.startswith("(") and text.endswith(")"):
+        text = "-" + text[1:-1]
+    # Locale separators may swap, but losing a separator, sign, ratio or
+    # percent marker changes the value and must trigger a warning.
+    return re.sub(r"[^0-9.,+%/:-]", "", text).replace(",", ".")
 
 
 def _reread_digits(img, word, k: float, options: "OcrOptions") -> Optional[str]:
@@ -262,11 +296,12 @@ def _reread_digits(img, word, k: float, options: "OcrOptions") -> Optional[str]:
     bottom = min(img.height, int(word["bottom"] / k) + RECHECK_PAD_PX)
     if right - left < 2 or bottom - top < 2:
         return None
-    config = (f"--psm 8 -l {options.lang} "
+    config = ("--psm 8 "
               f"-c tessedit_char_whitelist={DIGIT_WHITELIST}")
     try:
         out = pytesseract.image_to_string(img.crop((left, top, right, bottom)),
-                                          config=config)
+                                          config=config, lang=options.lang,
+                                          timeout=10)
     except Exception:
         return None
     return out.strip()
@@ -299,6 +334,27 @@ def _flag_numbers(img, words, k: float, options: "OcrOptions") -> None:
             w["suspect"] = reason
 
 
+
+def _grid_recognition_image(img, dpi):
+    """Mask detected grid rules in a copy; retain raw pixels and rule geometry."""
+    binary = np.asarray(img) < BINARIZE_THRESHOLD
+    h_px, v_px = _detect_rules_px(binary)
+    # Retain the original raster for numeric rereads and grid geometry. Thin
+    # grid rules otherwise cause Tesseract to discard entire rows as graphics.
+    recognition_image = img
+    if len(h_px) >= 3 and len(v_px) >= 2:
+        from PIL import ImageDraw
+        recognition_image = img.copy()
+        draw = ImageDraw.Draw(recognition_image)
+        for rule in h_px:
+            draw.line((rule["x0"], rule["top"], rule["x1"], rule["top"]),
+                      fill=255, width=max(1, round(7 * dpi / 300)))
+        for rule in v_px:
+            draw.line((rule["x"], rule["top"], rule["x"], rule["bottom"]),
+                      fill=255, width=max(1, round(7 * dpi / 300)))
+
+    return recognition_image, h_px, v_px
+
 def ocr_page(page, options: Optional[OcrOptions] = None
              ) -> Tuple[List[dict], List[dict], List[dict]]:
     """OCR one pdfplumber page.
@@ -321,13 +377,17 @@ def ocr_page(page, options: Optional[OcrOptions] = None
     import pytesseract
     pytesseract.pytesseract.tesseract_cmd = cmd
 
-    img = page.to_image(resolution=options.dpi).original.convert("L")
+    check_render_size(float(page.width), float(page.height), options.dpi)
+    rendered = page.to_image(resolution=options.dpi)
+    img = rendered.original.convert("L")
     img = _deskew(img)
     k = 72.0 / options.dpi  # px -> pt
 
+    recognition_image, h_px, v_px = _grid_recognition_image(img, options.dpi)
+
     data = pytesseract.image_to_data(
-        img, output_type=pytesseract.Output.DICT,
-        config=f"--psm {options.psm} -l {options.lang}",
+        recognition_image, output_type=pytesseract.Output.DICT,
+        config=f"--psm {options.psm}", lang=options.lang, timeout=120,
     )
     words = []
     for i in range(len(data["text"])):
@@ -338,7 +398,9 @@ def ocr_page(page, options: Optional[OcrOptions] = None
             conf = float(data["conf"][i])
         except (TypeError, ValueError):
             conf = -1.0
-        if conf < MIN_WORD_CONF:
+        if not math.isfinite(conf):
+            conf = -1.0
+        if conf < MIN_WORD_CONF and not is_numeric_token(text):
             continue
         x, y = data["left"][i], data["top"][i]
         w, h = data["width"][i], data["height"][i]
@@ -354,10 +416,27 @@ def ocr_page(page, options: Optional[OcrOptions] = None
 
     _flag_numbers(img, words, k, options)
 
-    binary = np.asarray(img) < BINARIZE_THRESHOLD
-    h_px, v_px = _detect_rules_px(binary)
     h_rules = [{"x0": l["x0"] * k, "x1": l["x1"] * k, "top": l["top"] * k}
                for l in h_px]
     v_rules = [{"top": l["top"] * k, "bottom": l["bottom"] * k, "x": l["x"] * k}
                for l in v_px]
+    # Pixel coordinates start at the rendered crop, which need not start at
+    # PDF (0, 0). Use its actual dimensions to account for pixel rounding.
+    left, top, right, bottom = rendered.bbox
+    sx = (right - left) / img.width / k
+    sy = (bottom - top) / img.height / k
+    for word in words:
+        word["x0"] = left + word["x0"] * sx
+        word["x1"] = left + word["x1"] * sx
+        word["top"] = top + word["top"] * sy
+        word["bottom"] = top + word["bottom"] * sy
+        word["size"] *= sy
+    for rule in h_rules:
+        rule["x0"] = left + rule["x0"] * sx
+        rule["x1"] = left + rule["x1"] * sx
+        rule["top"] = top + rule["top"] * sy
+    for rule in v_rules:
+        rule["x"] = left + rule["x"] * sx
+        rule["top"] = top + rule["top"] * sy
+        rule["bottom"] = top + rule["bottom"] * sy
     return words, h_rules, v_rules

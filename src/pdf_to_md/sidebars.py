@@ -68,6 +68,7 @@ def _line_boxes(page) -> List[Tuple[float, float, float, float]]:
         elif abs(ln["x1"] - ln["x0"]) <= 1.5 and ln["bottom"] - ln["top"] > MIN_H:
             vert.append(ln)
 
+    horiz.sort(key=lambda ln: (ln["top"], ln["x0"]))
     boxes = []
     for i, top_ln in enumerate(horiz):
         for bot_ln in horiz[i + 1:]:
@@ -82,9 +83,9 @@ def _line_boxes(page) -> List[Tuple[float, float, float, float]]:
             if not left or not right:
                 continue
             box = (x0, top_ln["top"], x1, bot_ln["top"])
-            if all(v["top"] <= box[1] + CORNER_TOL
-                   and v["bottom"] >= box[3] - CORNER_TOL
-                   for v in (left[0], right[0])):
+            if all(any(v["top"] <= box[1] + CORNER_TOL
+                       and v["bottom"] >= box[3] - CORNER_TOL
+                       for v in side) for side in (left, right)):
                 boxes.append(box)
     return boxes
 

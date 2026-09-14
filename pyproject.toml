@@ -18,6 +18,7 @@ classifiers = [
     "Topic :: Text Processing :: Markup :: Markdown",
 ]
 dependencies = [
+    "jsonschema>=4.18,<5",
     "pdfplumber>=0.11",
     "numpy>=1.24",
     "pytesseract>=0.3.10",
@@ -35,3 +36,6 @@ pdf2md-gui = "pdf_to_md.gui:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+"pdf_to_md.evidence" = ["schema/*.json", "schema/*.mjs", "schema/*.ts"]

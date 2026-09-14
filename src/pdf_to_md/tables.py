@@ -23,7 +23,7 @@ from __future__ import annotations
 
 from typing import List, Optional
 
-from .geometry import clean_text, words_to_line_groups
+from .geometry import clean_text, scan_positions, words_to_line_groups
 
 MIN_RULE_WIDTH = 40.0        # pt: shorter strokes are not table rules
 MAX_RULE_THICKNESS = 2.5     # pt
@@ -98,15 +98,13 @@ def _column_cuts(groups: List[List[dict]]) -> List[float]:
     tolerate = max(1, int(0.2 * n))  # spanning header cells may cross a cut
 
     free_xs = []
-    x = x_lo
-    while x <= x_hi:
+    for x in scan_positions(x_lo, x_hi, CUT_STEP):
         crossing = sum(
             1 for g in groups
             if any(w["x0"] - 1.0 < x < w["x1"] + 1.0 for w in g)
         )
         if crossing <= tolerate:
             free_xs.append(x)
-        x += CUT_STEP
 
     # group consecutive free positions into gaps; keep interior gaps
     cuts = []
@@ -203,6 +201,8 @@ def lattice_table(words: List[dict], col_xs: List[float],
                 break
         if ri is not None and ci is not None:
             grid[ri][ci].append(w)
+        else:
+            return None  # never consume a region while dropping its words
     rows = []
     for r in grid:
         cells = []

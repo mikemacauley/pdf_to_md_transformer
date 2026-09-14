@@ -50,11 +50,11 @@ _SYMBOL_OPERATORS = {
     0x28: "(", 0x29: ")", 0x5B: "[", 0x5D: "]", 0x7B: "{", 0x7D: "}",
     0x2C: ",", 0x2E: ".", 0x21: "!", 0x7C: "|", 0x3A: ":", 0x3B: ";",
     0xA3: "≤", 0xA5: "∞", 0xB1: "±", 0xB3: "≥", 0xB4: "×", 0xB6: "∂",
-    0xB7: "⋅", 0xB8: "÷", 0xB9: "≠", 0xBA: "≡", 0xBB: "≈",
+    0xB7: "•", 0xB8: "÷", 0xB9: "≠", 0xBA: "≡", 0xBB: "≈",
     0xAB: "↔", 0xAC: "←", 0xAD: "↑", 0xAE: "→", 0xAF: "↓",
     0xC7: "∩", 0xC8: "∪", 0xCE: "∈", 0xCF: "∉",
     0xD1: "∇", 0xD6: "√", 0xE5: "∑", 0xF2: "∫",
-    0xB0: "°", 0xD8: "≠",
+    0xB0: "°", 0xD8: "¬",
 }
 SYMBOL_ENCODING = {}
 SYMBOL_ENCODING.update(_GREEK_UPPER)
@@ -82,7 +82,7 @@ UNICODE_TO_LATEX = {
     "≈": r"\approx", "∼": r"\sim", "∝": r"\propto",
     # operators
     "±": r"\pm", "∓": r"\mp", "×": r"\times", "÷": r"\div",
-    "⋅": r"\cdot", "·": r"\cdot", "∘": r"\circ", "−": "-",
+    "⋅": r"\cdot", "·": r"\cdot", "•": r"\bullet", "∘": r"\circ", "−": "-",
     # big operators
     "∑": r"\sum", "∏": r"\prod", "∫": r"\int", "∮": r"\oint",
     "⋃": r"\bigcup", "⋂": r"\bigcap",
@@ -117,6 +117,7 @@ for _ch, _name in _GREEK_LATEX.items():
 # Greek capitals that are just Latin letters in disguise render as
 # themselves; LaTeX has no \Alpha.
 UNICODE_TO_LATEX.update({
+    "ο": "o",
     "Α": "A", "Β": "B", "Ε": "E", "Ζ": "Z", "Η": "H", "Ι": "I",
     "Κ": "K", "Μ": "M", "Ν": "N", "Ο": "O", "Ρ": "P", "Τ": "T",
     "Χ": "X",

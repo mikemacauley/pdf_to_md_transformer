@@ -14,6 +14,9 @@ from __future__ import annotations
 import re
 from typing import List, Optional, Tuple
 
+from .fileio import atomic_output
+from .ocr import check_render_size
+
 # "Figure 3.", "Fig. 3:", "FIGURE 12 --", "Chart 2", "Scheme 1", "Plate IV"
 CAPTION_RE = re.compile(
     r"^(figure|fig\.|fig|chart|scheme|plate|exhibit)\s*"
@@ -151,7 +154,11 @@ def bind_caption(region, lines) -> Optional[int]:
 def extract_image(page, region, out_path: str) -> None:
     """Render ``region`` of the page to a PNG at DPI (deterministic)."""
     x0, top, x1, bottom = region
-    box = (max(0.0, x0), max(0.0, top),
-           min(float(page.width), x1), min(float(page.height), bottom))
+    left, page_top, right, page_bottom = page.bbox
+    box = (max(left, x0), max(page_top, top),
+           min(right, x1), min(page_bottom, bottom))
+    # pdfplumber renders the parent page before cropping the raster.
+    check_render_size(float(page.width), float(page.height), DPI)
     img = page.crop(box).to_image(resolution=DPI).original
-    img.convert("RGB").save(out_path, format="PNG", optimize=True)
+    with atomic_output(out_path) as output:
+        img.convert("RGB").save(output, format="PNG", optimize=True)

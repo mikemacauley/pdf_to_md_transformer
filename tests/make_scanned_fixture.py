@@ -44,6 +44,15 @@ def scanify(src: str, dst: str) -> str:
     return dst
 
 
+def build(dst):
+    """Build the single-page provenance control from the synthetic sample."""
+    from make_fixture import build as build_sample
+    sample = os.path.join(FIX, "sample.pdf")
+    if not os.path.exists(sample):
+        build_sample(sample)
+    return scanify(sample, dst)
+
+
 def build_all():
     from make_fixture import build as build_sample
     from make_science_fixture import build as build_science

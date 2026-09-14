@@ -34,8 +34,11 @@ import re
 from collections import Counter
 from dataclasses import dataclass, field
 from typing import Callable, List, Optional
+from urllib.parse import quote
 
 import pdfplumber
+
+from .fileio import atomic_output, ensure_distinct_paths
 
 from .figures import (
     bind_caption,
@@ -193,15 +196,14 @@ def _parse_page_vector(page, page_number: int = 0,
 
     # 1. ruled (lattice) tables
     tables = page.find_tables()
-    table_bboxes = [t.bbox for t in tables]
+    table_bboxes = []
     table_items = []
     for t in tables:
         rows = _extract_lattice_rows(t)
         if rows:
+            table_bboxes.append(t.bbox)
             x0, top, x1, bottom = t.bbox
             table_items.append(TableItem(rows, x0, x1, top, bottom))
-
-    sidebar_regions = detect_boxed_regions(page, table_bboxes)
 
     words = page.extract_words(extra_attrs=["size", "fontname"],
                                keep_blank_chars=False)
@@ -216,9 +218,11 @@ def _parse_page_vector(page, page_number: int = 0,
         if rows:
             table_items.append(TableItem(rows, region[0], region[2],
                                          region[1], region[3]))
+            table_bboxes.append(region)
             words = outside  # consumed
 
     # 3. sidebars
+    sidebar_regions = detect_boxed_regions(page, table_bboxes)
     body_words = []
     sidebar_words: List[list] = [[] for _ in sidebar_regions]
     for w in words:
@@ -331,11 +335,17 @@ def _split_equations(page, lines, exclude_bboxes=(),
     items, taken = [], set()
     i = 0
     while i < len(ordered):
-        if not is_equation(ordered[i]):
+        if id(ordered[i]) in taken or not is_equation(ordered[i]):
             i += 1
             continue
         run, tag, label_line = [], None, None
-        while i < len(ordered) and is_equation(ordered[i]):
+        while (i < len(ordered) and id(ordered[i]) not in taken
+               and is_equation(ordered[i])
+               and (not run or (
+                   ordered[i].top - run[-1].bottom <= max(ordered[i].size, run[-1].size)
+                   and (min(ordered[i].x1, run[-1].x1) >= max(ordered[i].x0, run[-1].x0)
+                        or any(_in_band(ordered[i], b) and _in_band(run[-1], b)
+                               for b in bands))))):
             run.append(ordered[i])
             tag = tag or equation_tag(ordered[i].text)
             i += 1
@@ -486,6 +496,7 @@ def _suspect_note(page_number: int, words) -> Optional[str]:
         return None
     shown = flagged[:MAX_LISTED_SUSPECTS]
     listed = ", ".join(f"{w['text']!r} ({w['suspect']})" for w in shown)
+    listed = listed.replace("--", "&#45;&#45;").replace("<", "&lt;").replace(">", "&gt;")
     more = ("" if len(flagged) == len(shown)
             else f", and {len(flagged) - len(shown)} more")
     n = len(flagged)
@@ -547,7 +558,7 @@ def _parse_page_ocr(page, page_number: int,
 # --------------------------------------------------------------------------
 
 def _escape_cell(s: str) -> str:
-    return s.replace("|", "\\|")
+    return re.sub(r"\s+", " ", s).replace("\\", "\\\\").replace("|", "\\|")
 
 
 def _render_table(rows: List[List[str]]) -> str:
@@ -566,7 +577,7 @@ def _render_figure(fig) -> List[str]:
     """A figure becomes an image link, or a marker plus its caption."""
     alt = fig.caption or fig.label or "Figure"
     if fig.href:
-        return ["![" + _escape_link_text(alt) + "](" + fig.href + ")"]
+        return ["![" + _escape_link_text(alt) + "](" + quote(fig.href, safe="/") + ")"]
     w = fig.x1 - fig.x0
     h = fig.bottom - fig.top
     marker = (f"<!-- figure: page {fig.page_number}, "
@@ -579,7 +590,7 @@ def _render_figure(fig) -> List[str]:
 
 
 def _escape_link_text(s: str) -> str:
-    return s.replace("[", "\\[").replace("]", "\\]")
+    return s.replace("\\", "\\\\").replace("[", "\\[").replace("]", "\\]")
 
 
 def _join_par(lines: List[str]) -> str:
@@ -647,6 +658,7 @@ class _Renderer:
                     j < len(lines)
                     and self._is_heading(lines[j])
                     and abs(lines[j].size - ln.size) < 0.6
+                    and lines[j].top >= lines[j - 1].top
                     and lines[j].top - lines[j - 1].bottom < ln.size
                 ):
                     htexts.append(lines[j].text)
@@ -662,6 +674,9 @@ class _Renderer:
                 flush()
                 items = []
                 while i < len(lines):
+                    if items and (self._is_heading(lines[i])
+                                  or lines[i].top < lines[i - 1].top - 2):
+                        break
                     lt = lines[i].text
                     bm = BULLET_RE.match(lt)
                     nm = NUMBERED_RE.match(lt)
@@ -674,7 +689,7 @@ class _Renderer:
                     else:
                         break
                     i += 1
-                blocks.extend(self._render_list(lines, items))
+                blocks.extend(self._render_list(lines[:i], items))
                 continue
 
             gap_break = (
@@ -792,6 +807,7 @@ def convert_pdf_to_markdown(
                 streams.append(_parse_page_vector(
                     page, i + 1, assets,
                     reconstruct_math=reconstruct_math))
+            page.close()  # release cached glyphs/images before the next page
             if progress:
                 progress(i + 1, npages)
 
@@ -829,6 +845,7 @@ def convert_file(pdf_path: str, out_path: str,
     With ``extract_images``, figures are written as PNGs into a sibling
     ``<name>_assets/`` directory and linked from the Markdown.
     """
+    ensure_distinct_paths(pdf_path, out_path)
     assets_dir = assets_href = None
     if extract_images:
         stem = os.path.splitext(os.path.basename(out_path))[0]
@@ -840,6 +857,6 @@ def convert_file(pdf_path: str, out_path: str,
                                  assets_href=assets_href,
                                  ocr_options=ocr_options,
                                  reconstruct_math=reconstruct_math)
-    with open(out_path, "w", encoding="utf-8", newline="\n") as f:
-        f.write(md)
+    with atomic_output(out_path) as f:
+        f.write(md.encode("utf-8"))
     return out_path

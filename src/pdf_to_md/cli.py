@@ -20,9 +20,14 @@ import sys
 from . import __version__
 from .engine import convert_file, convert_pdf_to_markdown
 from .ocr import OcrOptions
+from .fileio import reserve_output
 
 
 def main(argv=None) -> int:
+    argv = list(sys.argv[1:] if argv is None else argv)
+    if argv and argv[0] in ("inspect", "extract") and not os.path.isfile(argv[0]):
+        from .evidence.cli import main as evidence_main
+        return evidence_main(argv)
     ap = argparse.ArgumentParser(
         prog="pdf2md",
         description="Deterministically convert PDF files to Markdown "
@@ -64,12 +69,16 @@ def main(argv=None) -> int:
     # In --json mode stdout carries only the report.
     log = sys.stderr if (args.as_json or args.stdout) else sys.stdout
 
-    ocr_options = OcrOptions(lang=args.ocr_lang, psm=args.ocr_psm,
-                             dpi=args.ocr_dpi,
-                             verify_numbers=not args.no_verify_numbers)
+    try:
+        ocr_options = OcrOptions(lang=args.ocr_lang, psm=args.ocr_psm,
+                                 dpi=args.ocr_dpi,
+                                 verify_numbers=not args.no_verify_numbers)
+    except ValueError as exc:
+        ap.error(str(exc))
 
     results = []
     failures = 0
+    claimed = set()
     for pdf in args.pdfs:
         entry = {"input": pdf, "ok": False, "output": None, "error": None}
         if not os.path.isfile(pdf):
@@ -90,6 +99,7 @@ def main(argv=None) -> int:
                 outdir = args.outdir or os.path.dirname(os.path.abspath(pdf))
                 os.makedirs(outdir, exist_ok=True)
                 out = os.path.join(outdir, base)
+                reserve_output(out, claimed, args.pdfs)
                 convert_file(pdf, out,
                              extract_images=args.extract_images,
                              ocr_options=ocr_options,

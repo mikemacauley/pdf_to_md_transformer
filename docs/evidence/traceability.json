@@ -1,0 +1,83 @@
+{
+  "specification": "DEE-1 revision 1.0",
+  "release_qualified": false,
+  "scope": "Transformer evidence foundation, structure handling and development worker; no Clausewerk integration",
+  "detectors": {
+    "A01": [
+      "tests/evidence/test_contract.py::test_preserves_source_and_determinism"
+    ],
+    "A02": [
+      "tests/evidence/test_contract.py::test_semantic_negative_controls",
+      "tests/evidence/test_contract.py::test_citation_cannot_lose_observation_geometry",
+      "tests/evidence/test_structure.py::test_lost_cell_and_row_are_detected",
+      "tests/evidence/test_structure.py::test_table_cell_cannot_steal_another_cell_observation",
+      "tests/evidence/test_structure.py::test_equations_keep_observations_separate_from_inferred_latex",
+      "tests/evidence/test_structure.py::test_callout_can_contain_table_without_reclaiming_observations"
+    ],
+    "A03": [
+      "tests/evidence/test_contract.py::test_blank_is_distinct",
+      "tests/evidence/test_contract.py::test_missing_ocr_has_gap",
+      "tests/evidence/test_contract.py::test_missing_language_no_substitution",
+      "tests/evidence/test_structure.py::test_scanned_grid_preserves_empty_ink_as_unreadable",
+      "tests/evidence/test_structure.py::test_rejected_small_visual_primitive_is_not_complete"
+    ],
+    "A05": [
+      "tests/evidence/test_contract.py::test_canonical_golden",
+      "tests/evidence/test_contract.py::test_preserves_source_and_determinism",
+      "tests/evidence/test_contract.py::test_bundle_integrity_and_replay",
+      "tests/evidence/test_structure.py::test_regions_export_final_paragraph_once_and_are_deterministic",
+      "tests/evidence/test_structure.py::test_figure_caption_and_package_roundtrip"
+    ],
+    "A06": [
+      "tests/evidence/test_contract.py::test_coordinates",
+      "tests/evidence/test_structure.py::test_rotated_cropped_table_keeps_bounded_cell_geometry",
+      "tests/evidence/test_structure.py::test_ocr_inverse_affine_is_canonical_and_localizes_pixels"
+    ],
+    "A08": [
+      "tests/evidence/test_contract.py::test_citation_rechecks_authority_and_exact_text"
+    ],
+    "A10": [
+      "tests/evidence/test_contract.py::test_bundle_symlink",
+      "tests/evidence/test_contract.py::test_inspection_rejects_untrusted_extra_fields"
+    ],
+    "A12": [
+      "tests/evidence/test_contract.py::test_bundle_integrity_and_replay"
+    ],
+    "A14": [
+      "tests/evidence/test_contract.py::test_limits_and_options",
+      "tests/evidence/test_supervisor.py",
+      "tests/evidence/test_structure.py::test_page_spool_tamper_refuses_and_cleans_up",
+      "tests/evidence/test_supervisor.py::test_real_worker_transports_region_assets"
+    ],
+    "A15": [
+      "tests/evidence/test_contract.py::test_safe_markdown"
+    ],
+    "A16": [
+      "tests/evidence/test_contract.py::test_hidden_text_withheld",
+      "tests/evidence/test_structure.py::test_restricted_crop_cannot_be_marked_ordinary",
+      "tests/evidence/test_structure.py::test_shaded_background_is_callout_but_overlay_is_withheld"
+    ],
+    "A19": [
+      "tests/test_agent_interfaces.py",
+      "tests/evidence/test_contract.py::test_legacy_subcommand_filename"
+    ],
+    "A07": [
+      "tests/evidence/test_structure.py::test_ruled_tables_preserve_grid_and_literals",
+      "tests/evidence/test_structure.py::test_vertical_merged_cell_preserves_row_span",
+      "tests/evidence/test_structure.py::test_table_continuation_is_candidate_and_page_local",
+      "tests/evidence/test_structure.py::test_lost_cell_and_row_are_detected",
+      "tests/evidence/test_structure.py::test_border_crossing_cannot_be_certified_resolved",
+      "tests/evidence/test_structure.py::test_cell_geometry_cannot_expand_to_table_region"
+    ]
+  },
+  "uncovered": [
+    "A04",
+    "A09",
+    "A11",
+    "A13",
+    "A17",
+    "A18",
+    "A20"
+  ],
+  "limits": "Listed detectors establish only their named controls, not complete acceptance rows. Production corpus, native geometry, protection-removal controls and Clausewerk dependencies remain outstanding."
+}

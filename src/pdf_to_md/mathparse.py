@@ -170,6 +170,8 @@ def _expression(glyphs: List[Glyph], bars: List[Bar], depth: int = 0) -> str:
     if depth > MAX_DEPTH:
         raise Unreconstructable("nesting too deep")
     if not glyphs:
+        if bars:
+            raise Unreconstructable("rule without glyphs")
         return ""
 
     bar = _dominant_bar(glyphs, bars)
@@ -197,6 +199,8 @@ def _fraction(bar: Bar, glyphs: Sequence[Glyph], bars: Sequence[Bar],
     if len(above) + len(below) != len(glyphs):
         raise Unreconstructable("glyphs straddle a fraction bar")
     rest = [b for b in bars if b is not bar]
+    if any(b.y == bar.y for b in rest):
+        raise Unreconstructable("unexplained coincident fraction rule")
     num = _expression(above, [b for b in rest if b.y < bar.y], depth + 1)
     den = _expression(below, [b for b in rest if b.y > bar.y], depth + 1)
     return "\\frac{" + num + "}{" + den + "}"
@@ -208,12 +212,16 @@ def _extract_fractions(glyphs: List[Glyph], bars: List[Bar], depth: int):
     remaining = list(glyphs)
     left = []
     for bar in sorted(bars, key=lambda b: -b.width):
+        if bar not in bars:
+            continue  # already consumed by an enclosing fraction
         above, below = _over(bar, remaining), _under(bar, remaining)
         if not above or not below:
             left.append(bar)          # an overline, or nothing to divide
             continue
         inner_bars = [b for b in bars
                       if b is not bar and bar.x0 - 1 <= b.cx <= bar.x1 + 1]
+        if any(b.y == bar.y for b in inner_bars):
+            raise Unreconstructable("unexplained coincident fraction rule")
         num = _expression(above, [b for b in inner_bars if b.y < bar.y],
                           depth + 1)
         den = _expression(below, [b for b in inner_bars if b.y > bar.y],

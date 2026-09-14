@@ -1,0 +1,102 @@
+{
+  "specification": "DEE-1 revision 1.0",
+  "release_qualified": false,
+  "scope": "Transformer foundation, structure handling and development worker; Clausewerk integration deferred",
+  "git_base": "c968ecfb162930ea69e7978c274ec02b00ce2bbb",
+  "working_tree": "Pre-existing edits retained; new implementation uncommitted",
+  "checks": [
+    {
+      "command": ".venv/bin/python -m pytest -q",
+      "result": "295 passed, 4 skipped in 14.56s; four opt-in Docker cases run separately below"
+    },
+    {
+      "command": ".venv/bin/python -m pytest tests/evidence/test_structure.py -q",
+      "result": "29 passed in 6.80s"
+    },
+    {
+      "command": "DEE_TEST_IMAGE=<immutable image below> .venv/bin/python -m pytest tests/evidence/test_supervisor.py -q",
+      "result": "7 passed in 5.28s, including PNG asset transport"
+    },
+    {
+      "command": "External pytest plugin replaces structure_validation.validate_structure with a no-op; run border crossing and cell geometry substitution controls",
+      "result": "Both detectors failed as expected with DID NOT RAISE EvidenceError; pytest exit 1. Plugin existed only outside repository; no production bypass."
+    },
+    {
+      "command": "Evidence CLI extract --assets regions --json and synthetic bundle regeneration/validation",
+      "result": "Passed; one PNG transported in local bundle and sample bundle validates"
+    },
+    {
+      "command": "Independent implementation and repair review",
+      "result": "Final narrow structure repair review: no substantive findings; cell geometry, nested ownership, visual reconciliation, asset timing and spool handling reviewed. Production qualification remains outstanding."
+    }
+  ],
+  "development_image": "sha256:6b872fae01c77e8f7bba0da27d8e1106dcc87ecd09effbb30f1a646966dec422",
+  "input_sha256": {
+    "docs/DOCUMENT-EVIDENCE-ENGINEERING-SPEC.md": "2f8713a51ae4a6ae2d6fa19563aa09c4224ee34988f795dc47e0ab5b35d4fc75",
+    "docs/EVIDENCE-IMPLEMENTATION.md": "4081101e005e6417fa06f4a0e884dba7425c0e904507bbf122e8ce57e925ce53",
+    "docs/evidence/traceability.json": "ffd6a8f976beb23e54c79b9f1fd631a6783220d0f1c8fb89fcc41a07d22624cd",
+    "packaging/evidence/Dockerfile": "ea1992c36aa341d6ef08c37c327c58cceec572706778186150e5824ca49914ed",
+    "pyproject.toml": "34663bacb7b6f79e5f7e92d1afbb14641f94ba044700d30df08e541f6d24456d",
+    "src/pdf_to_md/__init__.py": "a559c5c9dbe0ee4af991946ee34ae1c071dcf64f04f043f2f5a2a012802401a9",
+    "src/pdf_to_md/__main__.py": "634489f4f73e075d06a381da1b851047c050c790098f8b0ca39845f29c48f641",
+    "src/pdf_to_md/cli.py": "2a834f7bf581407aae8d2b0fb3aa69aa138342a1958e74295897e2eb7c0492e1",
+    "src/pdf_to_md/engine.py": "ada06751eae7f246fb849cd9e74feef0b0c647151ed4f299bf5bdbaf3237eace",
+    "src/pdf_to_md/equations.py": "0dde6826ce994030376ee7b90ad3e20bb3fd50d29e3743df6c1b20b71e1c30b5",
+    "src/pdf_to_md/evidence/__init__.py": "20fe83637f15899e3efb638aaea3069e9ae076d28de7e60a072e3c16cc2898d0",
+    "src/pdf_to_md/evidence/assets.py": "0d33dd7b5207aaf9ff71c9a95aa09c063cdd3218385fe23a09bb54ee8be93b80",
+    "src/pdf_to_md/evidence/bundle.py": "fd4964ae240af6c1404b4fd79c03b562177ef102303936df561af7fd5ac0ca2d",
+    "src/pdf_to_md/evidence/canonical.py": "aff4e9eb1509bd7a5bc7b1ca355e4089d412bf719db22bf138a89eaa21a808df",
+    "src/pdf_to_md/evidence/citations.py": "bd70c46af7f482749420910425878940fb89f27c9aadbb65aec1963d75fcdd0f",
+    "src/pdf_to_md/evidence/cli.py": "d484cfdd5977680e881ad01aae422df7fc9ec078b0c09b6cb8ac3888db46d285",
+    "src/pdf_to_md/evidence/coordinates.py": "f553eb3b4bc2752dc9b494df0927a4d5f207e70f23d99754a5c5929de9d3c432",
+    "src/pdf_to_md/evidence/extract.py": "eaa2caa05c5c989a1e704e094d429bc50498897a4b3cd42bf113a13b7cd42a87",
+    "src/pdf_to_md/evidence/inspection.py": "c05b597c30dab7417a9497a596e58dd69cc4d9f1de3ab086d1321503f8cf726a",
+    "src/pdf_to_md/evidence/model.py": "d0119e130f27f002f144725d8a5cd1cec9c44963822e141d308837eac0605ef1",
+    "src/pdf_to_md/evidence/normalize.py": "722f292d6bfd7c07609fd3133b9050bb9f332616f2ae990d717c9bbfde02a8fa",
+    "src/pdf_to_md/evidence/observations.py": "ab5a0fdc9bf24afdde06ea7f0dcb014013d4670dc7f2ca36eb140d887139a7ea",
+    "src/pdf_to_md/evidence/quality.py": "b7b06b0d6e13690a0c31e0653573338d77c4c343924f486b54131a95f8ce8328",
+    "src/pdf_to_md/evidence/raster.py": "4f1dab6e3849328be4093901e4b63be0a6ff9f57bca4b2de11ddc70ff85def9c",
+    "src/pdf_to_md/evidence/render.py": "24fd8ca35751d9fc2bdcac34ba142ddaa92bb9144b51419f74e80fcfc4ba687a",
+    "src/pdf_to_md/evidence/runtime.py": "84177e7bc9e27f956d5b0e9ab38ebcc8254f77fab8e618a0bd14c91e03e789cb",
+    "src/pdf_to_md/evidence/schema/build.py": "52db09aa883d31cfd77b3b8208cfefad51997c721d08c20b2de83bc9782d544e",
+    "src/pdf_to_md/evidence/schema/canonical.mjs": "f53eaeb82f6076e59887d86d7028d1c64eb248f3679aeb8870cfe8ae458e0d81",
+    "src/pdf_to_md/evidence/schema/document-1.0.0.json": "c53391fd91421e322374954a3ae46c26482915b8ca8688c157005a91c7f565b7",
+    "src/pdf_to_md/evidence/schema/document-1.0.0.ts": "d44617a9541f8678b499d187e98cf12b44f44f7c8eeef9ad6d3b3eac4569b247",
+    "src/pdf_to_md/evidence/schema/generate_types.py": "0a441a4b0dc7a748c6c29c4230dbfb51eec38188d2d0e70d18758e4ec9f82a29",
+    "src/pdf_to_md/evidence/spool.py": "870a95388312c85353d7f85eb031989d8466a1cd9f57a0aa1c10bf3f2cc10d57",
+    "src/pdf_to_md/evidence/structure.py": "8320067dad4ce1c287f24525f9d7d8a0bb76c4ba6bdd206cf372e5b1d812349c",
+    "src/pdf_to_md/evidence/structure_validation.py": "ffa4a20c677a1bbc3f9df10b04f3be628ac71fc616fc7cd780a565a40d505fae",
+    "src/pdf_to_md/evidence/validate.py": "6a2bba0ca101d976017763b04037de85760e0d2a565ce41e56bafc4ff3ca9884",
+    "src/pdf_to_md/figures.py": "3fee88161c2aea8a2f71edc3215e74327a467294baf2d5c29e564c586afe94bc",
+    "src/pdf_to_md/fileio.py": "e0b28888fa8a553aa4209c7904a6dab14d84168a313c39f6685b65d2481d1d3d",
+    "src/pdf_to_md/geometry.py": "3b0dd4b762cfe84849228089b229414266adcf6243f6b667d48de85fc3da143d",
+    "src/pdf_to_md/gui.py": "f523f8962a48056ac743e34ed9aefd2eb2a8bf4bc1683b27ff0a599627633ae2",
+    "src/pdf_to_md/mathparse.py": "a483c35fdff2b7eb00d076bb2f71e46cf737a3bd61112abdb81c99ecedbadfd7",
+    "src/pdf_to_md/mathsymbols.py": "2fe14eae4cadd431dc5d6bbcd61d022d9a35c97720d4933026583288d2940375",
+    "src/pdf_to_md/mcp_server.py": "5009d88390d871254cb02c1e85cb7e5e3ed18297cee7eb5e1bdf5504e6c8ae0b",
+    "src/pdf_to_md/ocr.py": "5a0bc5a3738baa76591bd225a3dd1c23fb616d48a280e8d20c1c59904b7574d3",
+    "src/pdf_to_md/sidebars.py": "17faffe3d303ff8734f4fd14ddb3770a0309cff6ab77503d2f5f842f344a05c6",
+    "src/pdf_to_md/supervisor.py": "b81f5e4e7d14134236996adf0e6c21b0f77a7dd5a1d81b7a88a455b7c367fdda",
+    "src/pdf_to_md/tables.py": "3e2973b610a6ae11dc01b9db62285dfa4573215617ee0d1150a20d4e307e3f0d",
+    "src/pdf_to_md/worker.py": "85b72a753660c4a5520df136d82aaba14b593cebe1c5313025722dd82610ccee",
+    "tests/evidence/test_contract.py": "dc529998bc2e88644567fa89306e28298f07a3c29c1cdcb8a8856deefc017460",
+    "tests/evidence/test_structure.py": "683cd0bb0ad429b6541faf2a8859f4cc134998110a9141f99b1d09a81cb5f4d1",
+    "tests/evidence/test_supervisor.py": "0af53ceb7ff3afe69fe3cc2b62e203f0b78c494ac0ba08dc0b95aecc12444556",
+    "tests/make_equation_fixture.py": "6d15d441089d69a2eb94556a33893ed72d3a5ad5f010108bfd09e88501c33992",
+    "tests/make_figure_fixture.py": "da0bb0425067c4e29b1fe91ace671996af00a184154116cfd294959f68ad8024",
+    "tests/make_fixture.py": "ebebef84a0b12da890595f1cba6e333848751cf55f368f7a1df1c5265b2a1e88",
+    "tests/make_latex_fixture.py": "bc04f596a71f3d3726f4beae1d94ad69e6a6af0ddf46888b9cfe90ed43dd2f17",
+    "tests/make_scanned_fixture.py": "fc4887303e2ce223ed329316c08ffb6a6a1855a842edffd28a333c258a979c4a",
+    "tests/make_science_fixture.py": "f0d38e8c3848a361e13db0543eeaffa55ef329d5c0eaab383ac3b23c349f0a2a",
+    "tests/make_sidebar_fixture.py": "025bfe8f44025ac8e6f7a05063bab0c2fa7618b9e76e51cc31cd79cf9ab1870e",
+    "tests/test_agent_interfaces.py": "89f60a986504de06b8d6fc3c75fbf693a156d7140bc32d44b1dd27eaf22353c3",
+    "tests/test_engine.py": "20e7b11952d53dcf2e7c6e4ae54c54c1250d150657bbe60c55358e90abe1361e",
+    "tests/test_equations.py": "c8a4fb0dc91dec4301e4b22f342809dec31906cf6df36889b504aeb3f09e3b53",
+    "tests/test_figures.py": "172f52ea3e0b2584695d00c0dae89270710a6a9da9e033a98059f1553c740043",
+    "tests/test_mathparse.py": "ad7c027243082b886ddc8e82c063d5716edcb68e328bd96b4c0a064e51da6897",
+    "tests/test_ocr_confidence.py": "c0c2416973adf3def70fe5e3f60cf10bf9255d5ae4d1964cfd7588e64e28c764",
+    "tests/test_review_regressions.py": "cc4763b790d4ceafdfe51583436a36c56c925d98c358c093adc0da7243d14401",
+    "tests/test_scientific.py": "7c344f563c04ec73c2e7dd78054aa561a8cfe38d8120a7516551d8b561cf329a",
+    "tests/test_sidebars.py": "6676e70c044a3fd64d075b2ac3c5ee58ade27dbf16a5ee3b6a183f5336d444e9"
+  }
+}
