@@ -67,6 +67,11 @@ def _validate(d):
     limits.check("document_bytes", len(canonical(d)))
     frames = {}
     order = []
+    evidence_pages = {
+        record["page"]
+        for records in (obs, blocks, spans)
+        for record in records.values()
+    }
     for p in pages.values():
         for f in p["frames"]:
             require(f["id"] not in frames, "duplicate frame id")
@@ -91,12 +96,25 @@ def _validate(d):
                 "complete page with feature gap",
             )
         if p["blank"] == "blank_by_rule":
+            assessments = [
+                issues[i]
+                for i in p["issue_ids"]
+                if issues[i]["code"] == "BLANK_PAGE_ASSESSED"
+            ]
             require(
                 p["coverage"] == "complete"
-                and any(
-                    issues[i]["code"] == "BLANK_PAGE_ASSESSED" for i in p["issue_ids"]
-                ),
+                and len(assessments) == 1
+                and assessments[0].get("page") == p["number"],
                 "unsubstantiated blank page",
+            )
+            require(
+                p["method"] == "none"
+                and p["number"] not in evidence_pages
+                and all(
+                    status in ("not_present", "not_requested")
+                    for status in p["feature_status"].values()
+                ),
+                "blank page has retained evidence or resolved content",
             )
     require(
         len(order) == len(set(order)) == len(blocks) and set(order) == set(blocks),
@@ -344,13 +362,28 @@ def _validate(d):
         "page": {str(p) for p in pages},
         "document": {d["extraction_id"]},
     }
-    for issue in issues.values():
+    for iid, issue in issues.items():
         require(
             set(issue["target_ids"]) <= set(targets[issue["scope"]]),
             "unknown issue target",
         )
         if "page" in issue:
             require(issue["page"] in pages, "issue outside requested pages")
+        if issue["code"] == "BLANK_PAGE_ASSESSED":
+            pn = issue.get("page")
+            require(
+                pn in pages
+                and pages[pn]["blank"] == "blank_by_rule"
+                and iid in pages[pn]["issue_ids"]
+                and issue["scope"] == "page"
+                and issue["target_ids"] == [str(pn)]
+                and issue["severity"] == "info"
+                and issue["exposure"] == "ordinary"
+                and issue["details"]["rule_id"] == "white_raster_no_objects_1"
+                and issue["details"]["measurements"]
+                == {"minimum_pixel": 255, "maximum_pixel": 255},
+                "invalid blank assessment",
+            )
         if issue["code"] == "VISIBILITY_CONFLICT":
             require(
                 issue["exposure"] == "restricted" and issue["severity"] == "blocking",
