@@ -159,6 +159,139 @@ def test_blank_is_distinct():
     assert d["quality"]["coverage"] == "complete"
 
 
+@pytest.fixture(scope="module")
+def blank_document():
+    return extract_document(pdf(blank=True))
+
+
+def _write_rehashed_bundle(original, altered, target):
+    # Model an untrusted producer with a consistent byte inventory. The reader
+    # must still reject contradictory record relationships.
+    write_bundle(original, target)
+    (target / "document.json").write_bytes(canonical(altered))
+    (target / "issues.json").write_bytes(canonical(altered["issues"]))
+    manifest = decode((target / "manifest.json").read_bytes())
+    manifest["document_hash"] = digest(canonical(altered))
+    for entry in manifest["artifacts"]:
+        data = (target / entry["name"]).read_bytes()
+        entry.update(bytes=len(data), sha256=digest(data))
+    (target / "manifest.json").write_bytes(canonical(manifest))
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "black_minimum", "nonwhite_maximum", "no_measurements", "unknown_rule",
+        "wrong_page", "wrong_scope", "missing_target", "warning", "restricted",
+        "digital_method", "resolved_text", "orphan_issue", "duplicate_issue",
+        "not_blank", "retained_span",
+    ],
+)
+def test_blank_assessment_refuses_contradictions(blank_document, mutation, tmp_path):
+    from pdf_to_md.evidence.quality import summarize
+
+    d = copy.deepcopy(blank_document)
+    page = d["pages"][0]
+    iid = next(i for i in page["issue_ids"] if d["issues"][i]["code"] == "BLANK_PAGE_ASSESSED")
+    issue = d["issues"][iid]
+    if mutation == "black_minimum":
+        issue["details"]["measurements"]["minimum_pixel"] = 0
+    elif mutation == "nonwhite_maximum":
+        issue["details"]["measurements"]["maximum_pixel"] = 254
+    elif mutation == "no_measurements":
+        issue["details"]["measurements"] = {}
+    elif mutation == "unknown_rule":
+        issue["details"]["rule_id"] = "unknown_rule"
+    elif mutation == "wrong_page":
+        issue.pop("page")
+    elif mutation == "wrong_scope":
+        issue.update(scope="document", target_ids=[d["extraction_id"]])
+    elif mutation == "missing_target":
+        issue["target_ids"] = []
+    elif mutation == "warning":
+        issue["severity"] = "warning"
+    elif mutation == "restricted":
+        issue["exposure"] = "restricted"
+    elif mutation == "digital_method":
+        page["method"] = "digital"
+    elif mutation == "resolved_text":
+        page["feature_status"]["text"] = "resolved"
+    elif mutation == "orphan_issue":
+        d["issues"]["i_orphan_blank"] = copy.deepcopy(issue)
+    elif mutation == "duplicate_issue":
+        page["issue_ids"].append(iid)
+    elif mutation == "not_blank":
+        page["blank"] = "not_blank"
+    elif mutation == "retained_span":
+        d["spans"]["s_retained"] = dict(
+            page=1, polygon_mpt=[[0, 0], [1, 0], [1, 1]],
+            bbox_mpt=[0, 0, 1, 1], observation_ids=[],
+        )
+    d["quality"] = summarize(d, d["quality"]["verification"])
+    with pytest.raises(EvidenceError) as error:
+        validate_document(d)
+    assert (error.value.code, error.value.stage) == ("INVALID_RESULT", "validate")
+    with pytest.raises(EvidenceError):
+        write_bundle(d, tmp_path / "refused")
+    assert not (tmp_path / "refused").exists()
+    target = tmp_path / "forged"
+    _write_rehashed_bundle(blank_document, d, target)
+    with pytest.raises(EvidenceError) as error:
+        validate_bundle(target)
+    assert (error.value.code, error.value.stage) == ("INVALID_RESULT", "validate")
+
+
+@pytest.mark.parametrize("mask_page_metadata", [False, True])
+def test_blank_claim_cannot_cover_text_or_enter_bundle(
+    document, blank_document, tmp_path, mask_page_metadata
+):
+    from pdf_to_md.evidence.quality import summarize
+
+    d = copy.deepcopy(document)
+    issue = next(i for i in blank_document["issues"].values() if i["code"] == "BLANK_PAGE_ASSESSED")
+    d["issues"]["i_forged_blank"] = copy.deepcopy(issue)
+    d["pages"][0]["issue_ids"].append("i_forged_blank")
+    d["pages"][0]["blank"] = "blank_by_rule"
+    if mask_page_metadata:
+        d["pages"][0]["method"] = "none"
+        d["pages"][0]["feature_status"] = {
+            feature: "not_requested" if status == "not_requested" else "not_present"
+            for feature, status in d["pages"][0]["feature_status"].items()
+        }
+    d["quality"] = summarize(d, d["quality"]["verification"])
+    for consume in (validate_document, render_markdown, lambda value: write_bundle(value, tmp_path / "refused")):
+        with pytest.raises(EvidenceError):
+            consume(d)
+    assert not (tmp_path / "refused").exists()
+
+    target = tmp_path / "forged"
+    _write_rehashed_bundle(document, d, target)
+    with pytest.raises(EvidenceError) as error:
+        validate_bundle(target)
+    assert (error.value.code, error.value.stage) == ("INVALID_RESULT", "validate")
+
+
+def test_blank_assessment_cannot_be_borrowed_from_another_page():
+    from pdf_to_md.evidence.quality import summarize
+
+    stream = io.BytesIO()
+    c = canvas.Canvas(stream, invariant=1)
+    c.showPage()
+    c.showPage()
+    c.save()
+    stream.seek(0)
+    d = extract_document(stream)
+    first, second = d["pages"]
+    other_iid = next(i for i in first["issue_ids"] if d["issues"][i]["code"] == "BLANK_PAGE_ASSESSED")
+    own_iid = next(i for i in second["issue_ids"] if d["issues"][i]["code"] == "BLANK_PAGE_ASSESSED")
+    second["issue_ids"].remove(own_iid)
+    del d["issues"][own_iid]
+    second["issue_ids"].append(other_iid)
+    d["quality"] = summarize(d, d["quality"]["verification"])
+    with pytest.raises(EvidenceError):
+        validate_document(d)
+
+
 def test_safe_markdown():
     d = extract_document(pdf("<script> ![image](https://example.test/x)"))
     rendered = render_markdown(d)
